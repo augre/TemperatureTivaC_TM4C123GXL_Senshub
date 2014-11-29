@@ -302,11 +302,9 @@ ConfigureUART(void)
 }
 //Humidity
 void
-HumiditySht(void)
+HumiditySht(float* fTemperature, float* fHumidity, int32_t* i32IntegerPart,int32_t* i32FractionPart)
 {
-    float fTemperature, fHumidity;
-    int32_t i32IntegerPart;
-    int32_t i32FractionPart;
+
 	 //
 	        // Write the command to start a humidity measurement
 	        //
@@ -337,7 +335,7 @@ HumiditySht(void)
 	        //
 	        // Get a copy of the most recent raw data in floating point format.
 	        //
-	        SHT21DataHumidityGetFloat(&g_sSHT21Inst, &fHumidity);
+	        SHT21DataHumidityGetFloat(&g_sSHT21Inst, fHumidity);
 
 	        //
 	        // Write the command to start a temperature measurement
@@ -369,42 +367,43 @@ HumiditySht(void)
 	        //
 	        // Get the most recent temperature result as a float in celcius.
 	        //
-	        SHT21DataTemperatureGetFloat(&g_sSHT21Inst, &fTemperature);
+	        SHT21DataTemperatureGetFloat(&g_sSHT21Inst, fTemperature);
 
 	        //
 	        // Convert the floats to an integer part and fraction part for easy
 	        // print. Humidity is returned as 0.0 to 1.0 so multiply by 100 to get
 	        // percent humidity.
 	        //
-	        fHumidity *= 100.0f;
-	        i32IntegerPart = (int32_t) fHumidity;
-	        i32FractionPart = (int32_t) (fHumidity * 1000.0f);
-	        i32FractionPart = i32FractionPart - (i32IntegerPart * 1000);
-	        if(i32FractionPart < 0)
+	        *fHumidity *= 100.0f;
+	        *i32IntegerPart = (int32_t) *fHumidity;
+	        *i32FractionPart = (int32_t) (*fHumidity * 1000.0f);
+	        *i32FractionPart = *i32FractionPart - (*i32IntegerPart * 1000);
+	        if(*i32FractionPart < 0)
 	        {
-	            i32FractionPart *= -1;
+	            *i32FractionPart *= -1;
 	        }
 
 	        //
 	        // Print the humidity value using the integers we just created
 	        //
-	        UARTprintf("Humidity %3d.%03d\t", i32IntegerPart, i32FractionPart);
+	        //UARTprintf("Humidity %3d.%03d\t", *i32IntegerPart, *i32FractionPart);
 
 	        //
 	        // Perform the conversion from float to a printable set of integers
 	        //
-	        i32IntegerPart = (int32_t) fTemperature;
-	        i32FractionPart = (int32_t) (fTemperature * 1000.0f);
-	        i32FractionPart = i32FractionPart - (i32IntegerPart * 1000);
-	        if(i32FractionPart < 0)
+	        /*
+	        *i32IntegerPart = (int32_t) *fTemperature;
+	        *i32FractionPart = (int32_t) (*fTemperature * 1000.0f);
+	        *i32FractionPart = *i32FractionPart - (*i32IntegerPart * 1000);
+	        if(*i32FractionPart < 0)
 	        {
-	            i32FractionPart *= -1;
+	            *i32FractionPart *= -1;
 	        }
-
+			*/
 	        //
 	        // Print the temperature as integer and fraction parts.
 	        //
-	        UARTprintf("Temperature %3d.%03d\n", i32IntegerPart, i32FractionPart);
+	        //UARTprintf("Temperature %3d.%03d\n", *i32IntegerPart, *i32FractionPart);
 
 	        //
 	        // Delay for one second. This is to keep sensor duty cycle
@@ -425,7 +424,9 @@ main(void)
     float fAmbient, fObject;
     int_fast32_t i32IntegerPart;
     int_fast32_t i32FractionPart;
-
+    float fTemperature, fHumidity;
+    int32_t i32sIntegerPart;
+    int32_t i32sFractionPart;
     //
     // Setup the system clock to run at 40 Mhz from PLL with crystal reference
     //
@@ -641,7 +642,7 @@ main(void)
         {
             i32FractionPart *= -1;
         }
-        UARTprintf("Ambient %3d.%03d\t", i32IntegerPart, i32FractionPart);
+        UARTprintf("Temerature:%3d.%03d ; ", i32IntegerPart, i32FractionPart);
 
         //
         // Convert the floating point ambient temperature  to an integer part
@@ -654,7 +655,8 @@ main(void)
         {
             i32FractionPart *= -1;
         }
-        UARTprintf("Object %3d.%03d\n", i32IntegerPart, i32FractionPart);
-        HumiditySht();
+        //UARTprintf("Object %3d.%03d\n", i32IntegerPart, i32FractionPart);
+        HumiditySht(&fTemperature, &fHumidity, &i32sIntegerPart, &i32sFractionPart);
+        UARTprintf("Humidity:%3d.%03d\n", i32sIntegerPart, i32sFractionPart);
     }
 }
