@@ -38,6 +38,10 @@
 #include "sensorlib/i2cm_drv.h"
 #include "sensorlib/tmp006.h"
 #include "drivers/rgb.h"
+/*Humidity*/
+#include "sensorlib/hw_sht21.h"
+#include "sensorlib/sht21.h"
+
 
 //*****************************************************************************
 //
@@ -59,9 +63,11 @@
 //*****************************************************************************
 //
 // Define TMP006 I2C Address.
+// Define SHT21 I2C Address.
 //
 //*****************************************************************************
 #define TMP006_I2C_ADDRESS      0x41
+#define SHT21_I2C_ADDRESS       0x40
 
 //*****************************************************************************
 //
@@ -70,12 +76,15 @@
 //*****************************************************************************
 tI2CMInstance g_sI2CInst;
 
+
 //*****************************************************************************
 //
 // Global instance structure for the TMP006 sensor driver.
+// Global instance structure for the SHT21 sensor driver.
 //
 //*****************************************************************************
 tTMP006 g_sTMP006Inst;
+tSHT21 g_sSHT21Inst;
 
 //*****************************************************************************
 //
@@ -134,6 +143,7 @@ TMP006AppCallback(void *pvCallbackData, uint_fast8_t ui8Status)
     //
     g_vui8ErrorFlag = ui8Status;
 }
+
 
 //*****************************************************************************
 //
@@ -198,6 +208,37 @@ TMP006I2CIntHandler(void)
 
 //*****************************************************************************
 //
+// Function to wait for the SHT21 transactions to complete.
+//
+//*****************************************************************************
+void
+SHT21AppI2CWait(char *pcFilename, uint_fast32_t ui32Line)
+{
+    //
+    // Put the processor to sleep while we wait for the I2C driver to
+    // indicate that the transaction is complete.
+    //
+    while((g_vui8DataFlag == 0) && (g_vui8ErrorFlag == 0))
+    {
+        ROM_SysCtlSleep();
+    }
+
+    //
+    // If an error occurred call the error handler immediately.
+    //
+    if(g_vui8ErrorFlag)
+    {
+        TMP006AppErrorHandler(pcFilename, ui32Line);
+    }
+
+    //
+    // clear the data flag for next use.
+    //
+    g_vui8DataFlag = 0;
+}
+
+//*****************************************************************************
+//
 // Called by the NVIC as a result of GPIO port E interrupt event. For this
 // application GPIO port E pin 0 is the interrupt line for the TMP006
 //
@@ -258,6 +299,119 @@ ConfigureUART(void)
     // Initialize the UART for console I/O.
     //
     UARTStdioConfig(0, 115200, 16000000);
+}
+//Humidity
+void
+HumiditySht(void)
+{
+    float fTemperature, fHumidity;
+    int32_t i32IntegerPart;
+    int32_t i32FractionPart;
+	 //
+	        // Write the command to start a humidity measurement
+	        //
+	        SHT21Write(&g_sSHT21Inst, SHT21_CMD_MEAS_RH, g_sSHT21Inst.pui8Data, 0,
+	                   TMP006AppCallback, &g_sSHT21Inst);
+
+	        //
+	        // Wait for the I2C transactions to complete before moving forward
+	        //
+	        SHT21AppI2CWait(__FILE__, __LINE__);
+
+	        //
+	        // Wait 33 milliseconds before attempting to get the result. Datasheet
+	        // claims this can take as long as 29 milliseconds
+	        //
+	        ROM_SysCtlDelay(ROM_SysCtlClockGet() / (30 * 3));
+
+	        //
+	        // Get the raw data from the sensor over the I2C bus
+	        //
+	        SHT21DataRead(&g_sSHT21Inst, TMP006AppCallback, &g_sSHT21Inst);
+
+	        //
+	        // Wait for the I2C transactions to complete before moving forward
+	        //
+	        SHT21AppI2CWait(__FILE__, __LINE__);
+
+	        //
+	        // Get a copy of the most recent raw data in floating point format.
+	        //
+	        SHT21DataHumidityGetFloat(&g_sSHT21Inst, &fHumidity);
+
+	        //
+	        // Write the command to start a temperature measurement
+	        //
+	        SHT21Write(&g_sSHT21Inst, SHT21_CMD_MEAS_T, g_sSHT21Inst.pui8Data, 0,
+	                   TMP006AppCallback, &g_sSHT21Inst);
+
+	        //
+	        // Wait for the I2C transactions to complete before moving forward
+	        //
+	        SHT21AppI2CWait(__FILE__, __LINE__);
+
+	        //
+	        // Wait 100 milliseconds before attempting to get the result. Datasheet
+	        // claims this can take as long as 85 milliseconds
+	        //
+	        ROM_SysCtlDelay(ROM_SysCtlClockGet() / (10 * 3));
+
+	        //
+	        // Read the conversion data from the sensor over I2C.
+	        //
+	        SHT21DataRead(&g_sSHT21Inst, TMP006AppCallback, &g_sSHT21Inst);
+
+	        //
+	        // Wait for the I2C transactions to complete before moving forward
+	        //
+	        SHT21AppI2CWait(__FILE__, __LINE__);
+
+	        //
+	        // Get the most recent temperature result as a float in celcius.
+	        //
+	        SHT21DataTemperatureGetFloat(&g_sSHT21Inst, &fTemperature);
+
+	        //
+	        // Convert the floats to an integer part and fraction part for easy
+	        // print. Humidity is returned as 0.0 to 1.0 so multiply by 100 to get
+	        // percent humidity.
+	        //
+	        fHumidity *= 100.0f;
+	        i32IntegerPart = (int32_t) fHumidity;
+	        i32FractionPart = (int32_t) (fHumidity * 1000.0f);
+	        i32FractionPart = i32FractionPart - (i32IntegerPart * 1000);
+	        if(i32FractionPart < 0)
+	        {
+	            i32FractionPart *= -1;
+	        }
+
+	        //
+	        // Print the humidity value using the integers we just created
+	        //
+	        UARTprintf("Humidity %3d.%03d\t", i32IntegerPart, i32FractionPart);
+
+	        //
+	        // Perform the conversion from float to a printable set of integers
+	        //
+	        i32IntegerPart = (int32_t) fTemperature;
+	        i32FractionPart = (int32_t) (fTemperature * 1000.0f);
+	        i32FractionPart = i32FractionPart - (i32IntegerPart * 1000);
+	        if(i32FractionPart < 0)
+	        {
+	            i32FractionPart *= -1;
+	        }
+
+	        //
+	        // Print the temperature as integer and fraction parts.
+	        //
+	        UARTprintf("Temperature %3d.%03d\n", i32IntegerPart, i32FractionPart);
+
+	        //
+	        // Delay for one second. This is to keep sensor duty cycle
+	        // to about 10% as suggested in the datasheet, section 2.4.
+	        // This minimizes self heating effects and keeps reading more accurate.
+	        //
+	        ROM_SysCtlDelay(ROM_SysCtlClockGet() / 3);
 }
 
 //*****************************************************************************
@@ -369,7 +523,8 @@ main(void)
     //
     TMP006Init(&g_sTMP006Inst, &g_sI2CInst, TMP006_I2C_ADDRESS,
                TMP006AppCallback, &g_sTMP006Inst);
-
+    SHT21Init(&g_sSHT21Inst, &g_sI2CInst, SHT21_I2C_ADDRESS,
+              TMP006AppCallback, &g_sSHT21Inst);
     //
     // Put the processor to sleep while we wait for the I2C driver to
     // indicate that the transaction is complete.
@@ -378,6 +533,15 @@ main(void)
     {
         ROM_SysCtlSleep();
     }
+    //
+    // Wait for the I2C transactions to complete before moving forward
+    //
+    SHT21AppI2CWait(__FILE__, __LINE__);
+    //
+    // Delay for 20 milliseconds for SHT21 reset to complete itself.
+    // Datasheet says reset can take as long 15 milliseconds.
+    //
+    ROM_SysCtlDelay(ROM_SysCtlClockGet() / (50 * 3));
 
     //
     // If an error occurred call the error handler immediately.
@@ -491,5 +655,6 @@ main(void)
             i32FractionPart *= -1;
         }
         UARTprintf("Object %3d.%03d\n", i32IntegerPart, i32FractionPart);
+        HumiditySht();
     }
 }
